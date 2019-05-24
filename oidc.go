@@ -65,10 +65,11 @@ func doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
 
 // Provider represents an OpenID Connect server's configuration.
 type Provider struct {
-	issuer      string
-	authURL     string
-	tokenURL    string
-	userInfoURL string
+	issuer           string
+	authURL          string
+	tokenURL         string
+	userInfoURL      string
+	introspectionURL string
 
 	// Raw claims returned by the server.
 	rawClaims []byte
@@ -82,11 +83,12 @@ type cachedKeys struct {
 }
 
 type providerJSON struct {
-	Issuer      string `json:"issuer"`
-	AuthURL     string `json:"authorization_endpoint"`
-	TokenURL    string `json:"token_endpoint"`
-	JWKSURL     string `json:"jwks_uri"`
-	UserInfoURL string `json:"userinfo_endpoint"`
+	Issuer           string `json:"issuer"`
+	AuthURL          string `json:"authorization_endpoint"`
+	TokenURL         string `json:"token_endpoint"`
+	IntrospectionURL string `json:"introspection_endpoint"`
+	JWKSURL          string `json:"jwks_uri"`
+	UserInfoURL      string `json:"userinfo_endpoint"`
 }
 
 // NewProvider uses the OpenID Connect discovery mechanism to construct a Provider.
@@ -124,12 +126,13 @@ func NewProvider(ctx context.Context, issuer string) (*Provider, error) {
 		return nil, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", issuer, p.Issuer)
 	}
 	return &Provider{
-		issuer:       p.Issuer,
-		authURL:      p.AuthURL,
-		tokenURL:     p.TokenURL,
-		userInfoURL:  p.UserInfoURL,
-		rawClaims:    body,
-		remoteKeySet: NewRemoteKeySet(ctx, p.JWKSURL),
+		issuer:           p.Issuer,
+		authURL:          p.AuthURL,
+		tokenURL:         p.TokenURL,
+		userInfoURL:      p.UserInfoURL,
+		introspectionURL: p.IntrospectionURL,
+		rawClaims:        body,
+		remoteKeySet:     NewRemoteKeySet(ctx, p.JWKSURL),
 	}, nil
 }
 
