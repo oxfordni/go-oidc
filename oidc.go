@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -217,6 +218,58 @@ func (p *Provider) UserInfo(ctx context.Context, tokenSource oauth2.TokenSource)
 	return &userInfo, nil
 }
 
+// UserInfo uses the token source to query the provider's user info endpoint.
+func (p *Provider) Introspect(ctx context.Context, config oauth2.Config, tokenSource oauth2.TokenSource) (*IDToken, error) {
+	if p.introspectionURL == "" {
+		return nil, errors.New("oidc: introspection endpoint is not supported by this provider")
+	}
+
+	token, err := tokenSource.Token()
+	if err != nil {
+		return nil, fmt.Errorf("oidc: get access token: %v", err)
+	}
+
+	form := url.Values{}
+	form.Add("token", token.AccessToken)
+	req, err := http.NewRequest("POST", p.introspectionURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("oidc: create GET request: %v", err)
+	}
+	req.SetBasicAuth(config.ClientID, config.ClientSecret)
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := doRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s: %s", resp.Status, body)
+	}
+
+	var idToken idToken
+	if err := json.Unmarshal(body, &idToken); err != nil {
+		return nil, fmt.Errorf("oidc: failed to decode id_token: %v", err)
+	}
+
+	if !idToken.Active {
+		return nil, fmt.Errorf("oidc: token is not active: %v", token)
+	}
+
+	return &IDToken{
+		Audience: idToken.Audience,
+		Subject:  idToken.Subject,
+		Expiry:   time.Time(idToken.Expiry),
+		IssuedAt: time.Time(idToken.IssuedAt),
+		Issuer:   idToken.Issuer,
+	}, nil
+}
+
+
 // IDToken is an OpenID Connect extension that provides a predictable representation
 // of an authorization event.
 //
@@ -328,6 +381,7 @@ type idToken struct {
 	AtHash       string                 `json:"at_hash"`
 	ClaimNames   map[string]string      `json:"_claim_names"`
 	ClaimSources map[string]claimSource `json:"_claim_sources"`
+	Active       bool                   `json:"active"`
 }
 
 type claimSource struct {
